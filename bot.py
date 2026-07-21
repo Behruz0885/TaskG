@@ -1623,7 +1623,7 @@ async def handle_ai_message(message: Message, state: FSMContext):
         await message.answer(
             "⚠️ Iltimos, avval hisobingizni (akkaunt) ulang.\n"
             "Buning uchun /connect buyrug'ini yuboring.",
-            reply_markup=main_menu_keyboard(is_connected=False),
+            reply_markup=await main_menu_keyboard(is_connected=False),
         )
         return
 
@@ -1659,7 +1659,7 @@ async def handle_voice_message(message: Message, state: FSMContext):
         await message.answer(
             "⚠️ Iltimos, avval hisobingizni (akkaunt) ulang.\n"
             "Buning uchun /connect buyrug'ini yuboring.",
-            reply_markup=main_menu_keyboard(is_connected=False),
+            reply_markup=await main_menu_keyboard(is_connected=False),
         )
         return
 
@@ -1730,7 +1730,7 @@ async def handle_media_message(message: Message, state: FSMContext):
         await message.answer(
             "⚠️ Iltimos, avval hisobingizni (akkaunt) ulang.\n"
             "Buning uchun /connect buyrug'ini yuboring.",
-            reply_markup=main_menu_keyboard(is_connected=False),
+            reply_markup=await main_menu_keyboard(is_connected=False),
         )
         return
 
