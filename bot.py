@@ -1800,7 +1800,8 @@ async def on_startup(bot: Bot):
     # Start admin server
     try:
         from admin.server import start_admin_server
-        admin_runner = await start_admin_server(bot=bot, port=8000)
+        port = int(os.getenv("PORT", 8000))
+        admin_runner = await start_admin_server(bot=bot, port=port)
     except Exception as e:
         logger.error(f"❌ Failed to start admin server: {e}", exc_info=True)
         
