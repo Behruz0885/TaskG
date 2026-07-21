@@ -90,8 +90,9 @@ class UserSession:
                 context_text = "\n".join(context_lines)
                 user_lang = await db.get_user_language(self.user_id)
 
+                sender_name = getattr(sender, 'first_name', '') or "do'st"
                 prompt = (
-                    f"Sening Telegram akkaunttinga '{getattr(sender, 'first_name', '') or 'do\'st'}' ismli foydalanuvchidan shaxsiy xabar (lichka) keldi.\n"
+                    f"Sening Telegram akkaunttinga '{sender_name}' ismli foydalanuvchidan shaxsiy xabar (lichka) keldi.\n"
                     f"Muloqot tarixi:\n{context_text}\n\n"
                     f"Oxirgi kelgan xabar: '{incoming_text}'\n\n"
                     f"VAZIFA: Foydalanuvchi nomidan unga do'stona, samimiy, tushunarli va qisqa javob yoz. "
