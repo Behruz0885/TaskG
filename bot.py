@@ -1795,7 +1795,17 @@ async def on_startup(bot: Bot):
     """Startup tasks."""
     global admin_runner
     await db.connect()
-    init_channel_storage(bot)
+    storage = init_channel_storage(bot)
+    
+    # 1. Restore database mapping state from channel pinned backup document
+    try:
+        await storage.restore_database_from_channel()
+    except Exception as rest_err:
+        logger.error(f"Restore from channel failed on startup: {rest_err}")
+        
+    # 2. Auto-load and reconnect all active user sessions to keep Telethon listeners alive
+    asyncio.create_task(session_manager.load_all_active_sessions())
+    
     await set_bot_commands(bot)
     
     # Start admin server

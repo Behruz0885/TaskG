@@ -927,6 +927,20 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Failed to delete session from channel: {e}")
 
+    async def load_all_active_sessions(self):
+        """Load and reconnect all active user sessions from database on startup."""
+        try:
+            logger.info("Auto-reconnecting all active user sessions on startup...")
+            async with db._db.execute("SELECT user_id FROM channel_sessions WHERE is_connected = 1") as cursor:
+                rows = await cursor.fetchall()
+                for row in rows:
+                    user_id = row[0]
+                    logger.info(f"Auto-loading session for user {user_id}...")
+                    await self.get_session(user_id)
+            logger.info("✅ All active user sessions auto-reconnected successfully!")
+        except Exception as e:
+            logger.error(f"Error auto-reconnecting user sessions: {e}", exc_info=True)
+
     async def cleanup_all(self):
         """Disconnect all active sessions (doesn't delete from channel)."""
         for session in self._sessions.values():

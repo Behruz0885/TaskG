@@ -63,6 +63,13 @@ class Database:
                 session_id INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS channel_chat_histories (
+                user_id INTEGER,
+                session_id INTEGER,
+                channel_message_id INTEGER,
+                PRIMARY KEY (user_id, session_id)
+            );
         """)
 
         # Add auto_reply column to existing table if missing

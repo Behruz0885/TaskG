@@ -263,13 +263,93 @@ class ChannelSessionStorage:
         except Exception as e:
             logger.error(f"Error saving chat history as JS to channel: {e}", exc_info=True)
 
+    async def restore_database_from_channel(self):
+        """
+        Scan the channel's pinned message (or search) for the database backup file 'database_backup.json',
+        download it, and restore all user sessions and chat history mappings into the local SQLite database.
+        """
+        try:
+            logger.info("Starting database restore process from channel...")
+            try:
+                chat = await self.bot.get_chat(self.channel_id)
+            except Exception as chat_err:
+                logger.error(f"Failed to get channel chat details: {chat_err}")
+                return False
+                
+            pinned_msg = chat.pinned_message
+            if not pinned_msg or not pinned_msg.document:
+                logger.warning("No pinned database backup document found in the channel.")
+                return False
+                
+            logger.info(f"Found pinned database backup document (msg_id: {pinned_msg.message_id}). Downloading...")
+            
+            file_io = await self.bot.download(pinned_msg.document)
+            backup_bytes = file_io.read()
+            backup_str = backup_bytes.decode("utf-8")
+            
+            try:
+                backup_data = json.loads(backup_str)
+            except Exception as parse_err:
+                logger.error(f"Failed to parse database backup JSON: {parse_err}")
+                return False
+                
+            users = backup_data.get("users", [])
+            history_mappings = backup_data.get("history_mappings", [])
+            
+            logger.info(f"Restoring {len(users)} users and {len(history_mappings)} history mappings from backup...")
+            
+            for user in users:
+                await db._db.execute(
+                    """INSERT OR REPLACE INTO channel_sessions (
+                        user_id, channel_message_id, phone, language, current_session_id, 
+                        is_connected, username, name, auto_reply, is_blocked, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        user.get("user_id"),
+                        user.get("channel_message_id"),
+                        user.get("phone", ""),
+                        user.get("language", "uz"),
+                        user.get("current_session_id", 1),
+                        user.get("is_connected", 1),
+                        user.get("username", ""),
+                        user.get("name", ""),
+                        user.get("auto_reply", 1),
+                        user.get("is_blocked", 0),
+                        user.get("created_at"),
+                        user.get("updated_at")
+                    )
+                )
+                
+            for mapping in history_mappings:
+                await db._db.execute(
+                    """INSERT OR REPLACE INTO channel_chat_histories (
+                        user_id, session_id, channel_message_id
+                    ) VALUES (?, ?, ?)""",
+                    (
+                        mapping.get("user_id"),
+                        mapping.get("session_id"),
+                        mapping.get("channel_message_id")
+                    )
+                )
+                
+            await db.set_system_setting("db_backup_message_id", str(pinned_msg.message_id))
+            await db._db.commit()
+            
+            logger.info("✅ Database restore process completed successfully!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error restoring database from channel: {e}", exc_info=True)
+            return False
+
     async def backup_database_to_channel(self):
-        """Export the users table (channel_sessions) as a .js file and upload it to the channel, replacing the old backup."""
+        """Export the database (channel_sessions & channel_chat_histories) as a JSON file and upload it to the channel, replacing the old backup and pinning it."""
         async with self._backup_lock:
             try:
-                # Query all user sessions from database
+                # 1. Query all user sessions from database
                 async with db._db.execute(
-                    """SELECT user_id, phone, language, current_session_id, is_connected, username, name, created_at, updated_at 
+                    """SELECT user_id, channel_message_id, phone, language, current_session_id, 
+                              is_connected, username, name, auto_reply, is_blocked, created_at, updated_at 
                        FROM channel_sessions"""
                 ) as cursor:
                     rows = await cursor.fetchall()
@@ -277,40 +357,52 @@ class ChannelSessionStorage:
                     for row in rows:
                         users_list.append({
                             "user_id": row[0],
-                            "phone": row[1] or "",
-                            "language": row[2] or "uz",
-                            "current_session_id": row[3] or 1,
-                            "is_connected": int(row[4]),
-                            "username": row[5] or "",
-                            "name": row[6] or "",
-                            "created_at": row[7],
-                            "updated_at": row[8]
+                            "channel_message_id": row[1],
+                            "phone": row[2] or "",
+                            "language": row[3] or "uz",
+                            "current_session_id": row[4] or 1,
+                            "is_connected": int(row[5]),
+                            "username": row[6] or "",
+                            "name": row[7] or "",
+                            "auto_reply": int(row[8]) if row[8] is not None else 1,
+                            "is_blocked": int(row[9]) if row[9] is not None else 0,
+                            "created_at": row[10],
+                            "updated_at": row[11]
                         })
 
-                # Convert to formatted JSON
-                json_str = json.dumps(users_list, ensure_ascii=False, indent=2)
+                # 2. Query all channel chat history mappings
+                async with db._db.execute(
+                    "SELECT user_id, session_id, channel_message_id FROM channel_chat_histories"
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    history_mappings_list = []
+                    for row in rows:
+                        history_mappings_list.append({
+                            "user_id": row[0],
+                            "session_id": row[1],
+                            "channel_message_id": row[2]
+                        })
+
+                # 3. Create JSON payload
+                backup_data = {
+                    "users": users_list,
+                    "history_mappings": history_mappings_list
+                }
+                json_str = json.dumps(backup_data, ensure_ascii=False, indent=2)
+                file_content = json_str.encode("utf-8")
                 
-                # Format the JavaScript file content
-                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                js_content = (
-                    f"// 🤖 TELEGRAM BOT USERS DATABASE BACKUP\n"
-                    f"// 📅 Generated At: {now_str}\n"
-                    f"// 👥 Total Users: {len(users_list)}\n\n"
-                    f"const usersDatabase = {json_str};\n"
-                )
-                
-                file_content = js_content.encode("utf-8")
                 input_file = BufferedInputFile(
-                    file_content, filename="users_database.js"
+                    file_content, filename="database_backup.json"
                 )
                 
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 caption = (
-                    f"🗄 DATABASE BACKUP (JS)\n"
+                    f"🗄 DATABASE BACKUP (JSON)\n"
                     f"👥 Total Users: {len(users_list)}\n"
                     f"📅 Date: {now_str}"
                 )
                 
-                # Retrieve the old backup message ID from database settings
+                # 4. Retrieve the old backup message ID from database settings
                 old_msg_id = await db.get_system_setting("db_backup_message_id")
                 if old_msg_id:
                     try:
@@ -322,16 +414,27 @@ class ChannelSessionStorage:
                     except Exception as del_err:
                         logger.warning(f"Could not delete old backup message {old_msg_id}: {del_err}")
                         
-                # Send new document message to channel
+                # 5. Send new document message to channel
                 msg = await self.bot.send_document(
                     chat_id=self.channel_id,
                     document=input_file,
                     caption=caption
                 )
                 
-                # Save the new message ID in database settings
+                # 6. Pin this message to the channel so the bot can always retrieve it on startup via get_chat
+                try:
+                    await self.bot.pin_chat_message(
+                        chat_id=self.channel_id,
+                        message_id=msg.message_id,
+                        disable_notification=True
+                    )
+                    logger.info("Pinned database backup message in channel")
+                except Exception as pin_err:
+                    logger.warning(f"Failed to pin database backup message: {pin_err}")
+                
+                # 7. Save the new message ID in database settings
                 await db.set_system_setting("db_backup_message_id", str(msg.message_id))
-                logger.info(f"Successfully backed up users database to channel as JS (msg_id: {msg.message_id})")
+                logger.info(f"Successfully backed up users database to channel as JSON (msg_id: {msg.message_id})")
                 
             except Exception as e:
                 logger.error(f"Error in backup_database_to_channel: {e}", exc_info=True)
