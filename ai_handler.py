@@ -167,6 +167,12 @@ Senda quyidagi funksiyalar mavjud (tools). Har bir buyruqni bajarish uchun tegis
 36. **create_group_call** - Guruh yoki kanalda Ovozli muloqot (Voice/Video Chat) boshlash
     - Parametrlar: {{"chat_id": "username yoki ID", "title": "Ovozli muloqot"}}
 
+37. **send_file** - Chatga fayl/hujjat yoki rasm yuborish (file_path ga to'g'ridan-to'g'ri URL yoki lokal fayl yo'li beriladi)
+    - Parametrlar: {{"chat_id": "username yoki ID", "file_path": "https://.../rasm.jpg yoki fayl yo'li", "caption": "izoh (ixtiyoriy)"}}
+
+38. **unpin_message** - Pin qilingan xabarni yechish (message_id berilmasa, chatdagi barcha pinlar yechiladi)
+    - Parametrlar: {{"chat_id": "username yoki ID", "message_id": 123}}
+
 ## Javob formati:
 
 Har doim quyidagi JSON formatida javob ber:
@@ -202,6 +208,24 @@ Har doim quyidagi JSON formatida javob ber:
 - {lang_instruction}
 - Agar funksiya mavjud bo'lmasa, buni message orqali ayt
 - "message" maydoni foydalanuvchiga ko'rsatiladigan matn, lekin actions bo'lsa, natija ham qo'shiladi
+
+## Telegram bo'yicha bilim (buni yaxshi bilishing SHART, aks holda amallarni to'g'ri bajara olmaysan):
+- chat_id sifatida quyidagilarni ishlatish mumkin: ochiq username (masalan @durov), telefon raqam (+998901234567), raqamli ID (masalan 123456789), yoki faqat o'ziga yozish uchun "me". "Saved Messages" ("saqlangan xabarlar") = "me".
+- Chat turlari: shaxsiy suhbat (user), bot, oddiy guruh (group), superguruh (supergroup), kanal (channel). get_dialogs har bir chatning "type" maydonini qaytaradi — kerakli turdagi chatni shundan ajratib ol.
+- ID'ni oldindan bilmasang, AVVAL topib ol, KEYIN amalni bajar. Odam yoki chatni topish uchun search_chats/search_global yoki get_dialogs; aniq bir xabarni (message_id) topish uchun get_messages. Bir so'rovda avval "olish", so'ng "bajarish" amallarini actions massiviga ketma-ket yoz.
+- Xabarga javob (reply) berish: send_message'da reply_to=message_id ber. Xabarni boshqa chatga uzatish: forward_message.
+- Quyidagi amallar uchun senda admin/tegishli huquq bo'lishi kerak; huquq bo'lmasa amal xato qaytaradi va buni foydalanuvchiga muloyim tushuntir: kick_chat_member, promote_admin, update_chat_title, update_chat_about, update_chat_photo, ba'zi guruh/kanallarda pin_message.
+- send_file bilan rasm yoki fayl yuborayotganda file_path'ga to'g'ridan-to'g'ri URL berish mumkin (masalan rasm havolasi). Rasm/fayl uchun izoh kerak bo'lsa caption'dan foydalan. Stiker uchun send_sticker, GIF uchun send_gif.
+- send_reaction uchun haqiqiy emoji ishlat: 👍 ❤️ 🔥 🎉 😁 😢 👏 kabi.
+- Cheklovlar: bitta xabar 4096 belgigacha, media izohi (caption) 1024 belgigacha.
+- Foydalanuvchi noaniq gapirsa (masalan "unga yoz", "o'sha xabarni o'chir", "u odamni chiqar") — kim yoki qaysi xabar/chat nazarda tutilganini aniqlashtir yoki avval get_dialogs/get_messages/search bilan topib ol, keyin amal qil.
+
+## Namunalar (natural so'rov → to'g'ri actions):
+- "Salimga 'salom' deb yoz" → [{{"function": "send_message", "params": {{"chat_id": "@salim", "text": "salom"}}}}]
+- "Kanalimdagi oxirgi 5 ta xabarni o'chir" → avval get_messages bilan id'larni ol, keyin: [{{"function": "get_messages", "params": {{"chat_id": "@mychannel", "limit": 5}}}}, {{"function": "delete_messages", "params": {{"chat_id": "@mychannel", "message_ids": [101, 102, 103, 104, 105]}}}}]
+- "@durov kanaliga qo'shil" → [{{"function": "join_chat", "params": {{"link_or_username": "@durov"}}}}]
+- "Bu rasmni guruhga yubor: https://site.com/img.jpg" → [{{"function": "send_file", "params": {{"chat_id": "@mygroup", "file_path": "https://site.com/img.jpg", "caption": ""}}}}]
+- "Oxirgi xabarimga 🔥 qo'y" → avval get_messages bilan oxirgi message_id ni ol, keyin send_reaction chaqir.
 """
 
 
@@ -402,6 +426,7 @@ async def execute_actions(user_session, actions: list[dict]) -> list[dict]:
         "update_chat_photo": user_session.update_chat_photo,
         "send_sticker": user_session.send_sticker,
         "send_gif": user_session.send_gif,
+        "send_file": user_session.send_file,
         "request_voice_call": user_session.request_voice_call,
         "create_group_call": user_session.create_group_call,
     }
