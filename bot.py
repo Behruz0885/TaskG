@@ -14,6 +14,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardRemove,
+    BufferedInputFile,
 )
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
@@ -32,6 +33,7 @@ from session_manager import session_manager
 from channel_storage import init_channel_storage, get_channel_storage
 from ai_handler import ask_ai, execute_actions, format_results, polish_text, synthesize_ai_response
 from voice_handler import transcribe_voice
+from voice_tts import text_to_voice_ogg, wants_voice_reply
 
 # ── Logging ──────────────────────────────────────────────────────────
 
@@ -1521,6 +1523,29 @@ def smart_split_html(text: str, max_len: int = 3800) -> list[str]:
 # ── Main AI Message Handler ──────────────────────────────────────────
 # This must be registered LAST to catch all unhandled text messages
 
+async def _send_voice_reply(original_message: Message, response_text: str, language: str):
+    """Synthesize the AI answer to speech and send it as a Telegram voice message.
+
+    Best-effort: on any failure it stays silent (the text reply was already sent).
+    """
+    try:
+        try:
+            await original_message.bot.send_chat_action(original_message.chat.id, "record_voice")
+        except Exception:
+            pass
+
+        ogg_bytes = await text_to_voice_ogg(response_text, language=language)
+        if not ogg_bytes:
+            logger.warning("Voice reply requested but TTS produced no audio.")
+            return
+
+        await original_message.answer_voice(
+            BufferedInputFile(ogg_bytes, filename="voice.ogg")
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send voice reply: {e}")
+
+
 async def _process_ai_text(
     user_id: int,
     user_text: str,
@@ -1592,6 +1617,11 @@ async def _process_ai_text(
             except Exception:
                 msg = await original_message.answer(chunk)
             user_last_msg_id[user_id] = msg.message_id
+
+        # If the user asked the AI to reply with voice ("ovoz bilan yubor",
+        # "gapir", "скажи голосом", "speak"...), also send a spoken version.
+        if wants_voice_reply(user_text):
+            await _send_voice_reply(original_message, response_text, language)
 
     except Exception as e:
         logger.error(f"AI handler error for user {user_id}: {e}", exc_info=True)
