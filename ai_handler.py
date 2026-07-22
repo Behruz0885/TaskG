@@ -476,16 +476,21 @@ def format_results(ai_response: dict, action_results: list[dict]) -> str:
 def format_list_result(items: list[dict], action: str) -> str:
     """Format a list of results based on the action type with HTML styling."""
     lines = []
+    # How many items each branch actually renders. Defaults to "all" so that
+    # branches without a cap (e.g. search results) never show a false remainder.
+    display_limit = len(items)
 
     if action in ("get_messages", "get_unread_messages"):
-        for msg in items[:15]:  # Limit display
+        display_limit = 15
+        for msg in items[:display_limit]:
             sender = html.escape(msg.get("sender", "???"))
             text = html.escape(msg.get("text", "")[:80])
             media = "📎" if msg.get("has_media") else ""
             lines.append(f"• <b>[{msg.get('id')}]</b> <b>{sender}</b>: <i>{text}</i> {media}")
 
     elif action == "get_dialogs":
-        for d in items[:20]:
+        display_limit = 20
+        for d in items[:display_limit]:
             type_emoji = {"user": "👤", "group": "👥", "supergroup": "👥", "channel": "📢"}.get(d.get("type"), "💬")
             unread = f" (<b>{d['unread_count']}🔴</b>)" if d.get("unread_count", 0) > 0 else ""
             name = html.escape(d.get("name", ""))
@@ -499,25 +504,29 @@ def format_list_result(items: list[dict], action: str) -> str:
             lines.append(f"• {type_emoji} <b>{name}</b>{username} (<code>ID: {item['id']}</code>)")
 
     elif action == "get_chat_members":
-        for m in items[:20]:
+        display_limit = 20
+        for m in items[:display_limit]:
             bot = " 🤖" if m.get("is_bot") else ""
             username = f" <code>@{html.escape(m['username'])}</code>" if m.get("username") else ""
             name = html.escape(m.get("name", ""))
             lines.append(f"• 👤 <b>{name}</b>{username}{bot}")
 
     elif action == "get_contacts":
-        for c in items[:20]:
+        display_limit = 20
+        for c in items[:display_limit]:
             username = f" <code>@{html.escape(c['username'])}</code>" if c.get("username") else ""
             phone = f" 📞<code>{html.escape(c['phone'])}</code>" if c.get("phone") else ""
             name = html.escape(c.get("name", ""))
             lines.append(f"• 👤 <b>{name}</b>{username}{phone}")
 
     else:
-        for item in items[:10]:
+        display_limit = 10
+        for item in items[:display_limit]:
             lines.append(f"• {html.escape(json.dumps(item, ensure_ascii=False)[:100])}")
 
-    if len(items) > 20:
-        lines.append(f"   ... va yana {len(items) - 20} ta")
+    hidden = len(items) - display_limit
+    if hidden > 0:
+        lines.append(f"   ... va yana {hidden} ta")
 
     return "\n".join(lines)
 

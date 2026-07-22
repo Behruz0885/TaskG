@@ -27,6 +27,9 @@ class Config:
     # Database (for chat history & command logs only)
     DB_PATH: str = os.getenv("DB_PATH", "bot_database.db")
 
+    # Admin panel password. If empty, the admin panel API is locked down entirely.
+    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "")
+
     # Limits
     MAX_HISTORY_MESSAGES: int = 50
     AI_MAX_TOKENS: int = 4096

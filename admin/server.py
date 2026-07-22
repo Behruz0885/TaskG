@@ -1,9 +1,12 @@
 import os
 import json
+import hmac
+import secrets
 import asyncio
 import logging
 from datetime import datetime
 from aiohttp import web
+from config import config
 from database import db
 from session_manager import session_manager
 from channel_storage import get_channel_storage
@@ -12,6 +15,64 @@ logger = logging.getLogger(__name__)
 
 # Directory of this module (admin folder)
 ADMIN_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Paths that don't require authentication (static assets + the login endpoint).
+PUBLIC_PATHS = {"/", "/style.css", "/app.js", "/api/login"}
+
+
+def _extract_bearer_token(request) -> str:
+    """Pull the bearer token out of the Authorization header, if present."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[len("Bearer "):].strip()
+    return ""
+
+
+@web.middleware
+async def auth_middleware(request, handler):
+    """Require a valid admin token for every non-public route.
+
+    Secure by default: if no ADMIN_PASSWORD is configured, the API is locked
+    down entirely rather than left wide open.
+    """
+    if request.path in PUBLIC_PATHS:
+        return await handler(request)
+
+    if not config.ADMIN_PASSWORD:
+        return web.json_response(
+            {"error": "Admin panel is not configured. Set the ADMIN_PASSWORD environment variable."},
+            status=503,
+        )
+
+    token = _extract_bearer_token(request)
+    valid_tokens = request.app["valid_tokens"]
+    if token and token in valid_tokens:
+        return await handler(request)
+
+    return web.json_response({"error": "Unauthorized"}, status=401)
+
+
+async def api_post_login(request):
+    """Validate the admin password and issue a short-lived session token."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    password = data.get("password", "")
+
+    if not config.ADMIN_PASSWORD:
+        return web.json_response(
+            {"error": "Admin panel is not configured. Set the ADMIN_PASSWORD environment variable."},
+            status=503,
+        )
+
+    # Constant-time comparison to avoid leaking the password via timing.
+    if not password or not hmac.compare_digest(str(password), config.ADMIN_PASSWORD):
+        return web.json_response({"error": "Noto'g'ri parol."}, status=401)
+
+    token = secrets.token_urlsafe(32)
+    request.app["valid_tokens"].add(token)
+    return web.json_response({"success": True, "token": token})
 
 async def get_index(request):
     """Serve the React admin panel HTML file."""
@@ -365,11 +426,14 @@ async def api_post_delete_user(request):
 
 def create_admin_app(bot=None) -> web.Application:
     """Create and configure the web app."""
-    app = web.Application()
+    app = web.Application(middlewares=[auth_middleware])
     app["bot"] = bot
+    # In-memory set of issued session tokens (cleared on restart).
+    app["valid_tokens"] = set()
     app.router.add_get("/", get_index)
     app.router.add_get("/style.css", get_style)
     app.router.add_get("/app.js", get_app)
+    app.router.add_post("/api/login", api_post_login)
     app.router.add_get("/api/stats", api_get_stats)
     app.router.add_get("/api/users", api_get_users)
     app.router.add_get("/api/logs", api_get_logs)
@@ -388,5 +452,10 @@ async def start_admin_server(bot, port: int = 8000) -> web.AppRunner:
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+    if not config.ADMIN_PASSWORD:
+        logger.warning(
+            "⚠️ ADMIN_PASSWORD is not set — admin panel API is locked down. "
+            "Set the ADMIN_PASSWORD environment variable to enable access."
+        )
     logger.info(f"⚡️ Admin Panel successfully started on http://localhost:{port}")
     return runner
