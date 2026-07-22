@@ -720,3 +720,122 @@ code {
         padding: 10px 14px;
     }
 }
+
+/* ── Sidebar Footer / Logout ─────────────────────────── */
+.sidebar-footer {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+    list-style: none;
+}
+
+.logout-item {
+    color: var(--text-secondary);
+}
+
+.logout-item:hover {
+    color: var(--danger);
+    background-color: var(--danger-glow);
+}
+
+/* ── Login Screen ────────────────────────────────────── */
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 100vh;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.12), transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.08), transparent 40%),
+        var(--bg-primary);
+}
+
+.login-card {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+    max-width: 380px;
+    padding: 40px 32px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.login-brand i {
+    color: var(--accent);
+    text-shadow: 0 0 12px var(--accent-glow);
+}
+
+.login-subtitle {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-top: -8px;
+}
+
+.login-input {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background-color: rgba(8, 12, 20, 0.6);
+    color: var(--text-primary);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.login-button {
+    width: 100%;
+    padding: 14px 16px;
+    border: none;
+    border-radius: 10px;
+    background-color: var(--accent);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+}
+
+.login-button:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.login-button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.login-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.login-error {
+    color: var(--danger);
+    font-size: 13px;
+    text-align: center;
+    padding: 8px 12px;
+    background-color: var(--danger-glow);
+    border-radius: 8px;
+}

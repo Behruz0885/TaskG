@@ -77,7 +77,10 @@ TEXTS = {
         "session_activated": "\n🟢 <b>#{session_id}-sonli suhbat faollashtirildi!</b>\n💬 <b>TaskGramAiBot uchun buyruq yuboring:</b>",
         "new_session_title": "✨ <b>Yangi Suhbat Sessiyasi</b>\n\n<blockquote>Yangi toza suhbat sessiyasi boshlandi! Endi yuboradigan barcha buyruq va so'rovlaringiz ushbu yangi suhbat kontekstida bajariladi.</blockquote>\n\n",
         "new_session_active": "\n🟢 <b>Faol suhbat:</b> <b>#{session_id}-sonli yangi suhbat</b>\n💬 <b>TaskGramAiBot uchun buyruq yuboring:</b>",
-                "welcome_instruction": "\n💬 <b>TaskGramAiBot uchun buyruq yuboring:</b>",
+        "must_connect": "📱 <b>Ishni boshlash uchun avval akkauntingizni ulang:</b>",
+        "not_connected_warning": "⚠️ <b>Akkaunt ulanmagan.</b>\nUlash uchun /connect buyrug'ini yuboring.",
+        "welcome_title": "🤖 <b>TaskGram AI Bot</b>\n\n<blockquote>Ushbu bot orqali siz o'z Telegram akkauntingizni <b>TaskGramAiBot</b> yordamida boshqarishingiz mumkin.</blockquote>\n\n",
+        "welcome_instruction": "\n💬 <b>TaskGramAiBot uchun buyruq yuboring:</b>",
         "history_user": "👤 <b>Siz:</b>",
         "history_ai": "🤖 <b>AI:</b>",
         "history_empty": "📭 Suhbatlar tarixi bo'sh.",
@@ -304,30 +307,41 @@ async def cmd_start(message: Message, state: FSMContext):
 
 
 async def safe_edit_text(message: Message, status_msg: Message, text: str, **kwargs):
-    """Safely edit status_msg or send a new message if editing fails, falling back to plain text on HTML parse errors."""
+    """Safely edit status_msg or send a new message if editing fails, falling back to plain text on HTML parse errors.
+
+    Tracks the user's last message id so it stays correct even when the fallback
+    path deletes the status message and resends the content.
+    """
+    user_id = message.from_user.id
+
+    def _track(result):
+        if result is not None:
+            user_last_msg_id[user_id] = result.message_id
+        return result
+
     try:
-        return await status_msg.edit_text(text, **kwargs)
+        return _track(await status_msg.edit_text(text, **kwargs))
     except Exception as e:
         logger.warning(f"safe_edit_text edit failed: {e}. Trying plain text fallback...")
         try:
             kwargs_plain = kwargs.copy()
             kwargs_plain.pop("parse_mode", None)
-            return await status_msg.edit_text(text, **kwargs_plain)
+            return _track(await status_msg.edit_text(text, **kwargs_plain))
         except Exception:
             pass
-            
+
         try:
             await status_msg.delete()
         except Exception:
             pass
-            
+
         try:
-            return await message.answer(text, **kwargs)
+            return _track(await message.answer(text, **kwargs))
         except Exception as e2:
             logger.warning(f"safe_edit_text answer failed: {e2}. Trying plain text answer fallback...")
             kwargs_plain = kwargs.copy()
             kwargs_plain.pop("parse_mode", None)
-            return await message.answer(text, **kwargs_plain)
+            return _track(await message.answer(text, **kwargs_plain))
 
 
 # ── /help Command ────────────────────────────────────────────────────
@@ -946,20 +960,6 @@ async def cb_clear_chat_history(callback: CallbackQuery):
 
 
 user_last_msg_id: dict[int, int] = {}
-
-
-async def safe_edit_text(orig_msg: Message, target_msg: Message, text: str, parse_mode=None):
-    """Safely edit or send message."""
-    user_id = orig_msg.from_user.id
-    try:
-        await target_msg.edit_text(text, parse_mode=parse_mode)
-        user_last_msg_id[user_id] = target_msg.message_id
-    except Exception:
-        try:
-            msg = await orig_msg.answer(text, parse_mode=parse_mode)
-            user_last_msg_id[user_id] = msg.message_id
-        except Exception:
-            pass
 
 
 async def safe_edit_callback(callback: CallbackQuery, text: str, reply_markup=None):
