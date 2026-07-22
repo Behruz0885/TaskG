@@ -324,6 +324,45 @@ async def api_post_block_user(request):
         logger.error(f"Error in api_post_block_user: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
+async def api_post_delete_user(request):
+    """Permanently delete a user, their session, chat history, and all settings."""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        if not user_id:
+            return web.json_response({"error": "user_id is required"}, status=400)
+            
+        user_id = int(user_id)
+        
+        # 1. Disconnect and remove personal Telethon session
+        try:
+            await session_manager.remove_session(user_id)
+        except Exception as e:
+            logger.warning(f"Could not remove session during delete for user {user_id}: {e}")
+            
+        # 2. Delete session files from channel
+        storage = get_channel_storage()
+        if storage:
+            try:
+                await storage.delete_session(user_id)
+            except Exception as e:
+                logger.warning(f"Could not delete session file from channel for user {user_id}: {e}")
+                
+        # 3. Clean up SQLite database tables for this user
+        await db._db.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
+        await db._db.execute("DELETE FROM command_log WHERE user_id = ?", (user_id,))
+        await db._db.execute("DELETE FROM channel_sessions WHERE user_id = ?", (user_id,))
+        await db._db.execute("DELETE FROM channel_chat_histories WHERE user_id = ?", (user_id,))
+        await db._db.commit()
+        
+        # 4. Trigger database backup to update the channel JSON backup
+        await db.trigger_backup()
+        
+        return web.json_response({"success": True})
+    except Exception as e:
+        logger.error(f"Error in api_post_delete_user: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
 def create_admin_app(bot=None) -> web.Application:
     """Create and configure the web app."""
     app = web.Application()
@@ -338,6 +377,7 @@ def create_admin_app(bot=None) -> web.Application:
     app.router.add_post("/api/users/disconnect", api_post_disconnect)
     app.router.add_post("/api/users/clear_history", api_post_clear_history)
     app.router.add_post("/api/users/block", api_post_block_user)
+    app.router.add_post("/api/users/delete", api_post_delete_user)
     app.router.add_post("/api/broadcast", api_post_broadcast)
     return app
 

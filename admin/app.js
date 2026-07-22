@@ -115,7 +115,7 @@ function DashboardView({ stats, loading, refreshData, setCurrentTab, lastUpdated
 }
 
 // Users Management Component
-function UsersView({ users, loading, refreshData, onToggleBlock, lastUpdated }) {
+function UsersView({ users, loading, refreshData, onToggleBlock, onDeleteUser, lastUpdated }) {
     return (
         <div>
             <Header title="Foydalanuvchilar" subtitle="Botga o'z Telegram akkauntini ulagan barcha foydalanuvchilar ro'yxati" lastUpdated={lastUpdated} />
@@ -139,22 +139,38 @@ function UsersView({ users, loading, refreshData, onToggleBlock, lastUpdated }) 
                                     <th>Foydalanuvchi</th>
                                     <th>Telefon</th>
                                     <th>Til</th>
+                                    <th>Sessiya ID</th>
                                     <th>Holat</th>
-                                    <th>Qo'shilgan vaqti</th>
+                                    <th>Ulangan sana</th>
                                     <th>Amallar</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {users.map(u => (
+                                {users.map((u) => (
                                     <tr key={u.user_id}>
                                         <td>
-                                            <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{u.name || 'Noma\'lum'}</div>
-                                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                                {u.username ? `@${u.username}` : ''} (ID: <code>{u.user_id}</code>)
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{u.name || "Noma'lum"}</span>
+                                                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                                    {u.username ? `@${u.username}` : `ID: ${u.user_id}`}
+                                                </span>
                                             </div>
                                         </td>
-                                        <td>{u.phone}</td>
-                                        <td style={{ textTransform: 'uppercase' }}><code>{u.language}</code></td>
+                                        <td style={{ color: 'var(--text-secondary)' }}>{u.phone || "Kiritilmagan"}</td>
+                                        <td>
+                                            <span style={{ 
+                                                textTransform: 'uppercase', 
+                                                fontSize: '12px', 
+                                                fontWeight: '600', 
+                                                color: 'var(--accent-color)',
+                                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px'
+                                            }}>
+                                                {u.language}
+                                            </span>
+                                        </td>
+                                        <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>#{u.current_session_id}</td>
                                         <td>
                                             {u.is_blocked ? (
                                                 <span className="badge disconnected" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
@@ -179,6 +195,18 @@ function UsersView({ users, loading, refreshData, onToggleBlock, lastUpdated }) 
                                                 >
                                                     <i className={`fa-solid ${u.is_blocked ? 'fa-lock-open' : 'fa-ban'}`} style={{ marginRight: '4px' }}></i>
                                                     {u.is_blocked ? 'Blokdan chiqarish' : 'Bloklash'}
+                                                </button>
+                                                <button 
+                                                    className="btn-action btn-danger-hover"
+                                                    style={{ 
+                                                        borderColor: 'rgba(239, 68, 68, 0.4)', 
+                                                        color: '#ef4444',
+                                                        marginLeft: '8px'
+                                                    }}
+                                                    onClick={() => onDeleteUser(u.user_id)}
+                                                >
+                                                    <i className="fa-solid fa-trash-can" style={{ marginRight: '4px' }}></i>
+                                                    O'chirish
                                                 </button>
                                             </div>
                                         </td>
@@ -603,6 +631,31 @@ function App() {
         }
     };
 
+    const handleDeleteUser = async (userId) => {
+        if (!confirm("Haqiqatan ham ushbu foydalanuvchini, uning sessiyasi, barcha chatlar tarixi va loglarini butunlay o'chirib tashlamoqchimisiz?\nBu amalni ortga qaytarib bo'lmaydi!")) {
+            return;
+        }
+        try {
+            setLoading(true);
+            const res = await fetch('/api/users/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("Foydalanuvchi ma'lumotlari butunlay o'chirildi.");
+                await refreshAll();
+            } else {
+                alert("Xatolik: " + data.error);
+            }
+        } catch (e) {
+            alert("Aloqada xatolik yuz berdi.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <React.Fragment>
             <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />
@@ -616,6 +669,7 @@ function App() {
                         loading={loading} 
                         refreshData={refreshAll} 
                         onToggleBlock={handleToggleBlock}
+                        onDeleteUser={handleDeleteUser}
                         lastUpdated={lastUpdated}
                     />
                 )}
