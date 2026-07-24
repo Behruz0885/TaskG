@@ -1718,23 +1718,11 @@ async def handle_voice_message(message: Message, state: FSMContext):
         await status_msg.edit_text(
             f"🗣 <b>Ovoz matnga o'girildi:</b>\n"
             f"💬 <i>\"{transcribed_text}\"</i>\n\n"
-            f"✨ <i>Tizim tomonidan tahlil qilish va grammatik silliqlash jarayoni ketmoqda...</i>",
-            parse_mode=ParseMode.HTML,
-        )
-
-        # Get user language
-        language = await db.get_user_language(user_id)
-
-        polished_text_val = await polish_text(transcribed_text, language=language)
-
-        await status_msg.edit_text(
-            f"🗣 <b>Asl transkripsiya:</b> <i>\"{transcribed_text}\"</i>\n"
-            f"✨ <b>Tahrirlangan buyruq:</b> <b>\"{polished_text_val}\"</b>\n\n"
             f"🤔 Sun'iy intellekt (GLM-5) so'rovni bajarmoqda...",
             parse_mode=ParseMode.HTML,
         )
 
-        await _process_ai_text(user_id, polished_text_val, session, status_msg, message)
+        await _process_ai_text(user_id, transcribed_text, session, status_msg, message)
 
     except Exception as e:
         logger.error(f"Voice message error for user {user_id}: {e}", exc_info=True)
