@@ -8,7 +8,7 @@ from config import config
 logger = logging.getLogger(__name__)
 
 
-async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> str | None:
+async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg", language: str = None) -> str | None:
     """
     Transcribe Telegram voice/audio file bytes to text using available STT services.
     Supports Voxtral, Groq Whisper, OpenAI Whisper, or Wit.ai API.
@@ -17,7 +17,7 @@ async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> s
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
         try:
-            text = await _transcribe_groq(voice_bytes, filename, groq_key)
+            text = await _transcribe_groq(voice_bytes, filename, groq_key, language=language)
             if text:
                 logger.info(f"Groq STT successfully transcribed: '{text[:50]}...'")
                 return text
@@ -28,7 +28,7 @@ async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> s
     openai_key = os.getenv("OPENAI_API_KEY", "")
     if openai_key:
         try:
-            text = await _transcribe_openai(voice_bytes, filename, openai_key)
+            text = await _transcribe_openai(voice_bytes, filename, openai_key, language=language)
             if text:
                 return text
         except Exception as e:
@@ -65,7 +65,7 @@ async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> s
     return None
 
 
-async def _transcribe_groq(file_bytes: bytes, filename: str, api_key: str) -> str | None:
+async def _transcribe_groq(file_bytes: bytes, filename: str, api_key: str, language: str = None) -> str | None:
     """Transcribe using Groq Whisper API."""
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -74,6 +74,11 @@ async def _transcribe_groq(file_bytes: bytes, filename: str, api_key: str) -> st
     data.add_field("file", file_bytes, filename=filename, content_type="audio/ogg")
     data.add_field("model", "whisper-large-v3")
     data.add_field("response_format", "json")
+    
+    # Guide the model to prioritize Uzbek, Russian, and English transcription
+    data.add_field("prompt", "O'zbekcha, Ruscha (Русский), English. Assalomu alaykum, привет, hello. Telegram bot buyruqlari.")
+    if language in ["uz", "ru", "en"]:
+        data.add_field("language", language)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -88,7 +93,7 @@ async def _transcribe_groq(file_bytes: bytes, filename: str, api_key: str) -> st
                 return None
 
 
-async def _transcribe_openai(file_bytes: bytes, filename: str, api_key: str) -> str | None:
+async def _transcribe_openai(file_bytes: bytes, filename: str, api_key: str, language: str = None) -> str | None:
     """Transcribe using OpenAI Whisper API."""
     url = "https://api.openai.com/v1/audio/transcriptions"
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -96,6 +101,10 @@ async def _transcribe_openai(file_bytes: bytes, filename: str, api_key: str) -> 
     data = aiohttp.FormData()
     data.add_field("file", file_bytes, filename=filename, content_type="audio/ogg")
     data.add_field("model", "whisper-1")
+    
+    data.add_field("prompt", "O'zbekcha, Ruscha (Русский), English. Assalomu alaykum, привет, hello. Telegram bot buyruqlari.")
+    if language in ["uz", "ru", "en"]:
+        data.add_field("language", language)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(

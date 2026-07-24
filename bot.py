@@ -1706,7 +1706,10 @@ async def handle_voice_message(message: Message, state: FSMContext):
             parse_mode=ParseMode.HTML,
         )
 
-        transcribed_text = await transcribe_voice(voice_bytes)
+        # Get user language preference to optimize transcription
+        language = await db.get_user_language(user_id)
+
+        transcribed_text = await transcribe_voice(voice_bytes, language=language)
 
         if not transcribed_text:
             await status_msg.edit_text(
