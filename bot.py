@@ -1528,38 +1528,41 @@ async def _process_ai_text(
     status_msg: Message,
     original_message: Message,
     is_voice: bool = False,
+    voice_bytes: bytes = None,
 ):
     """Core logic: forwards text to AI and executes returned actions via Telethon."""
     try:
         # Get chat history from DB
         chat_history = await db.get_chat_history(user_id)
 
+        # Determine AI model to use
+        ai_model = "mistral.voxtral-small-24b-2507" if (is_voice or voice_bytes) else None
+
         # Save user message
-        await db.add_chat_message(user_id, "user", user_text)
+        chat_label = user_text if not voice_bytes else "[🗣 Ovozli buyruq]"
+        await db.add_chat_message(user_id, "user", chat_label)
 
         # Get user language
         language = await db.get_user_language(user_id)
-
-        # Determine AI model to use
-        ai_model = "mistral.voxtral-small-24b-2507" if is_voice else None
 
         # Start live animated progress
         action_results = []
         async with StatusAnimator(status_msg, lang=language):
             # Ask AI
-            ai_response = await ask_ai(user_text, chat_history, language=language, model=ai_model)
+            ai_response = await ask_ai(user_text, chat_history, language=language, model=ai_model, voice_bytes=voice_bytes)
 
             # Execute actions if any
             if ai_response.get("actions"):
                 action_results = await execute_actions(session, ai_response["actions"])
                 
                 synthesized = await synthesize_ai_response(
-                    user_text=user_text,
+                    user_text=chat_label,
                     ai_message=ai_response.get("message", ""),
                     action_results=action_results,
                     chat_history=chat_history,
                     language=language,
                     model=ai_model,
+                    voice_bytes=voice_bytes,
                 )
                 if synthesized:
                     response_text = synthesized
@@ -1676,42 +1679,19 @@ async def handle_voice_message(message: Message, state: FSMContext):
         file_io = await message.bot.download(voice)
         voice_bytes = file_io.read()
 
-        transcribed_text = await transcribe_voice(voice_bytes)
-
-        if not transcribed_text:
-            await status_msg.edit_text(
-                "❌ <b>Ovozni matnga o'tkazish uchun API kalit topilmadi.</b>\n\n"
-                "⚡️ <b>Ovozni tanishni ulash (100% BEPUL):</b>\n\n"
-                "1️⃣ <a href=\"https://console.groq.com/keys\">console.groq.com/keys</a> saytiga kiring.\n"
-                "2️⃣ <b>\"Create API Key\"</b> tugmasini bosib, bepul API kalitingizni nusxalang.\n"
-                "3️⃣ <code>.env</code> faylingizga joylang:\n"
-                "<code>GROQ_API_KEY=gsk_...</code>\n\n"
-                "4️⃣ Botni qayta ishga tushiring! Ovozli xabarlar 0.3 soniyada matnga o'giriladi! 🚀",
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True,
-            )
-            return
-
         await status_msg.edit_text(
-            f"🗣 <b>Ovoz matnga o'girildi:</b>\n"
-            f"💬 <i>\"{transcribed_text}\"</i>\n\n"
-            f"✨ <i>Tizim tomonidan tahlil qilish va grammatik silliqlash jarayoni ketmoqda...</i>",
+            "🤔 <b>Sun'iy intellekt ovozli xabarni eshitmoqda va tahlil qilmoqda...</b>",
             parse_mode=ParseMode.HTML,
         )
 
-        # Get user language
-        language = await db.get_user_language(user_id)
-
-        polished_text_val = await polish_text(transcribed_text, language=language)
-
-        await status_msg.edit_text(
-            f"🗣 <b>Asl transkripsiya:</b> <i>\"{transcribed_text}\"</i>\n"
-            f"✨ <b>Tahrirlangan buyruq:</b> <b>\"{polished_text_val}\"</b>\n\n"
-            f"🤔 Sun'iy intellekt so'rovni bajarmoqda...",
-            parse_mode=ParseMode.HTML,
+        await _process_ai_text(
+            user_id=user_id,
+            user_text="",
+            session=session,
+            status_msg=status_msg,
+            original_message=message,
+            voice_bytes=voice_bytes,
         )
-
-        await _process_ai_text(user_id, polished_text_val, session, status_msg, message, is_voice=True)
 
     except Exception as e:
         logger.error(f"Voice message error for user {user_id}: {e}", exc_info=True)

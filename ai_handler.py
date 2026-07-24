@@ -217,7 +217,7 @@ def _build_api_url() -> str:
     return f"{base_url}/chat/completions"
 
 
-async def ask_ai(user_message: str, chat_history: list[dict], language: str = "uz", model: str = None) -> dict:
+async def ask_ai(user_message: str, chat_history: list[dict], language: str = "uz", model: str = None, voice_bytes: bytes = None) -> dict:
     """
     Send a message to the GLM-5 AI via AWS Bedrock Mantle / OpenAI-compatible endpoint.
 
@@ -235,7 +235,25 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
 
     messages = [{"role": "system", "content": get_system_prompt(language)}]
     messages.extend(chat_history[-20:])  # Last 20 messages for context
-    messages.append({"role": "user", "content": user_message})
+
+    if voice_bytes:
+        import base64
+        voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
+        user_content = [
+            {
+                "type": "text",
+                "text": "Ushbu ovozli xabarda berilgan buyruqni tahlil qiling va tegishli funksiyalarni chaqiring."
+            },
+            {
+                "type": "audio_url",
+                "audio_url": {
+                    "url": f"data:audio/ogg;base64,{voice_b64}"
+                }
+            }
+        ]
+        messages.append({"role": "user", "content": user_content})
+    else:
+        messages.append({"role": "user", "content": user_message})
 
     selected_model = model or config.AI_MODEL
 
@@ -598,6 +616,7 @@ async def synthesize_ai_response(
     chat_history: list[dict],
     language: str = "uz",
     model: str = None,
+    voice_bytes: bytes = None,
 ) -> str | None:
     """
     Takes the action execution results (data fetched from Telegram, e.g. messages from @BotFather)
@@ -628,10 +647,30 @@ async def synthesize_ai_response(
     selected_model = model or config.AI_MODEL
 
     try:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Foydalanuvchi so'rovi: {user_text}\nOlingan natijalar bo'yicha yakuniy javobni tayyorla."}
-        ]
+        if voice_bytes:
+            import base64
+            voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
+            user_content = [
+                {
+                    "type": "text",
+                    "text": "Olingan natijalar bo'yicha yakuniy javobni tayyorlang."
+                },
+                {
+                    "type": "audio_url",
+                    "audio_url": {
+                        "url": f"data:audio/ogg;base64,{voice_b64}"
+                    }
+                }
+            ]
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ]
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Foydalanuvchi so'rovi: {user_text}\nOlingan natijalar bo'yicha yakuniy javobni tayyorla."}
+            ]
 
         async with aiohttp.ClientSession() as session:
             headers = {
