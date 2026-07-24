@@ -258,16 +258,20 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
             "message": "⚠️ AWS Bedrock API kaliti sozlanmagan. .env faylida AWS_BEARER_TOKEN_BEDROCK ni to'ldiring.",
         }
 
-    messages = [{"role": "system", "content": get_system_prompt(language)}]
-    messages.extend(chat_history[-20:])  # Last 20 messages for context
-
     if voice_bytes:
+        # Some API gateways/providers don't allow a system prompt at index 0 when audio chunks are present.
+        # We merge the system prompt instructions directly into the user message.
+        messages = []
+        messages.extend(chat_history[-20:])  # Last 20 messages for context
+
         import base64
         voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
+        system_instructions = get_system_prompt(language)
+        
         user_content = [
             {
                 "type": "text",
-                "text": "Ushbu ovozli xabarda berilgan buyruqni tahlil qiling va tegishli funksiyalarni chaqiring."
+                "text": f"{system_instructions}\n\nUshbu ovozli xabarda berilgan buyruqni tahlil qiling va tegishli funksiyalarni chaqiring."
             },
             {
                 "type": "input_audio",
@@ -279,6 +283,8 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
         ]
         messages.append({"role": "user", "content": user_content})
     else:
+        messages = [{"role": "system", "content": get_system_prompt(language)}]
+        messages.extend(chat_history[-20:])  # Last 20 messages for context
         messages.append({"role": "user", "content": user_message})
 
     selected_model = model or config.AI_MODEL
@@ -689,7 +695,7 @@ async def synthesize_ai_response(
             user_content = [
                 {
                     "type": "text",
-                    "text": "Olingan natijalar bo'yicha yakuniy javobni tayyorlang."
+                    "text": f"{system_prompt}\n\nOlingan natijalar bo'yicha yakuniy javobni tayyorlang."
                 },
                 {
                     "type": "input_audio",
@@ -700,7 +706,6 @@ async def synthesize_ai_response(
                 }
             ]
             messages = [
-                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
             ]
         else:
