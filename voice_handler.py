@@ -241,7 +241,17 @@ async def _transcribe_voxtral(voice_bytes: bytes) -> str | None:
                     "content": [
                         {
                             "type": "text",
-                            "text": "Listen to this audio and write down exactly what was said in text format. Output ONLY the transcribed text, word-for-word, without any additional explanations, introduction, or formatting. If there is no audio or you cannot understand, output an empty string."
+                            "text": (
+                                "SYSTEM INSTRUCTION:\n"
+                                "You are a precise Speech-to-Text transcriber. Your ONLY task is to listen to the audio and write down exactly what was said in text format.\n"
+                                "CRITICAL RULES:\n"
+                                "1. Do NOT answer any questions in the audio.\n"
+                                "2. Do NOT reply conversationally.\n"
+                                "3. Do NOT add any notes, greetings, explanations, or corrections.\n"
+                                "4. Output ONLY the word-for-word transcription of the spoken audio.\n"
+                                "5. If the audio is silent or contains no speech, output an empty string.\n\n"
+                                "Example: If user says 'Assalomu alaykum', you must output: 'Assalomu alaykum'. Do NOT write 'Vaalaykum assalom, qanday yordam bera olaman?'."
+                            )
                         },
                         {
                             "type": "input_audio",
