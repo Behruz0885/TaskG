@@ -167,6 +167,12 @@ Senda quyidagi funksiyalar mavjud (tools). Har bir buyruqni bajarish uchun tegis
 36. **create_group_call** - Guruh yoki kanalda Ovozli muloqot (Voice/Video Chat) boshlash
     - Parametrlar: {{"chat_id": "username yoki ID", "title": "Ovozli muloqot"}}
 
+37. **send_file** - Chatga fayl/hujjat yoki rasm yuborish (file_path ga to'g'ridan-to'g'ri URL yoki lokal fayl yo'li beriladi)
+    - Parametrlar: {{"chat_id": "username yoki ID", "file_path": "https://.../rasm.jpg yoki fayl yo'li", "caption": "izoh (ixtiyoriy)"}}
+
+38. **unpin_message** - Pin qilingan xabarni yechish (message_id berilmasa, chatdagi barcha pinlar yechiladi)
+    - Parametrlar: {{"chat_id": "username yoki ID", "message_id": 123}}
+
 ## Javob formati:
 
 Har doim quyidagi JSON formatida javob ber:
@@ -192,6 +198,7 @@ Har doim quyidagi JSON formatida javob ber:
 - "shaxsiy", "shaxsiym", "lichka", "lichkam", "shaxsiy chatlar", "PM", "DM" atamalari ishlatilganda — bu "Saved Messages" emas, balki boshqa shaxslar bilan bo'lgan Shaxsiy Chatlar (Direct Messages / Private Chats) hisoblanadi! Shuning uchun 'shaxsiymga kimlar yozgan', 'lichkamdagi xabarlar' so'ralganda, get_dialogs (limit=20) funksiyasini chaqirib, shaxsiy foydalanuvchilar chatlarini (type='user') topib ber!
 - Faqat va faqat foydalanuvchi "Saved Messages", "saqlangan xabarlar", "o'zimga yozganlarim" deb aniq aytgandagina chat_id="me" ishlatiladi!
 - Agar foydalanuvchi "nima gap", "salom", "qanday gaplar" yoki shunga o'xshash oddiy salomlashish/savollar yuborsa, o'tgan buyruqlar tarixini hisobot qilib sanab bermasdan, oddiy do'stona suhbatdosh sifatida javob ber (masalan: "Hammasi joyida, o'zingizda nima gaplar? Sizga qanday yordam bera olaman?").
+- OVOZLI JAVOB (JUDA MUHIM): Sen foydalanuvchiga ovozli (voice) xabar bilan javob bera OLASAN. Agar foydalanuvchi "ovoz bilan yubor", "ovozli xabar bilan gaplash", "gapirib ber", "ovozda javob ber", "menga gapir" kabi so'rasa — HECH QACHON "ovozli xabar yubora olmayman" deb rad etma va bu ishni request_voice_call bilan ham adashtirma. Bunday holatda shunchaki so'ralgan javobni oddiy tarzda faqat "message" maydonida yoz (actions bo'sh [] bo'lsin) — tizim javobingni avtomatik ravishda ovozli xabarga aylantirib yuboradi. Agar foydalanuvchi aniq savol bermay, faqat ovozda gaplashishni so'rasa, do'stona qisqa javob ber (salomlash va qanday yordam kerakligini so'ra).
 - Agar foydalanuvchi 'men nechta bot yasaganman', 'botlarim ro'yxati', 'qanday botlarim bor' kabi so'rovlar bersa, har doim get_my_bots funksiyasini chaqir va botlar soni hamda ro'yxatini aniq ayt.
 - Agar foydalanuvchi biror bot tokenini so'rasa (masalan: '@bot tokenini ber'), har doim get_bot_token funksiyasini chaqir va javobda faqat token va qisqa izoh ber.
 - Agar foydalanuvchi hech qanday Telegram amali bajarishni so'ramagan bo'lsa (masalan: shunchaki oddiy savollar so'rasa, suhbatlashsa, salomlashsa va h.k.), actions massivini butunlay bo'sh [] qoldirib, javobingni faqat message maydonida yoz.
@@ -201,6 +208,24 @@ Har doim quyidagi JSON formatida javob ber:
 - {lang_instruction}
 - Agar funksiya mavjud bo'lmasa, buni message orqali ayt
 - "message" maydoni foydalanuvchiga ko'rsatiladigan matn, lekin actions bo'lsa, natija ham qo'shiladi
+
+## Telegram bo'yicha bilim (buni yaxshi bilishing SHART, aks holda amallarni to'g'ri bajara olmaysan):
+- chat_id sifatida quyidagilarni ishlatish mumkin: ochiq username (masalan @durov), telefon raqam (+998901234567), raqamli ID (masalan 123456789), yoki faqat o'ziga yozish uchun "me". "Saved Messages" ("saqlangan xabarlar") = "me".
+- Chat turlari: shaxsiy suhbat (user), bot, oddiy guruh (group), superguruh (supergroup), kanal (channel). get_dialogs har bir chatning "type" maydonini qaytaradi — kerakli turdagi chatni shundan ajratib ol.
+- ID'ni oldindan bilmasang, AVVAL topib ol, KEYIN amalni bajar. Odam yoki chatni topish uchun search_chats/search_global yoki get_dialogs; aniq bir xabarni (message_id) topish uchun get_messages. Bir so'rovda avval "olish", so'ng "bajarish" amallarini actions massiviga ketma-ket yoz.
+- Xabarga javob (reply) berish: send_message'da reply_to=message_id ber. Xabarni boshqa chatga uzatish: forward_message.
+- Quyidagi amallar uchun senda admin/tegishli huquq bo'lishi kerak; huquq bo'lmasa amal xato qaytaradi va buni foydalanuvchiga muloyim tushuntir: kick_chat_member, promote_admin, update_chat_title, update_chat_about, update_chat_photo, ba'zi guruh/kanallarda pin_message.
+- send_file bilan rasm yoki fayl yuborayotganda file_path'ga to'g'ridan-to'g'ri URL berish mumkin (masalan rasm havolasi). Rasm/fayl uchun izoh kerak bo'lsa caption'dan foydalan. Stiker uchun send_sticker, GIF uchun send_gif.
+- send_reaction uchun haqiqiy emoji ishlat: 👍 ❤️ 🔥 🎉 😁 😢 👏 kabi.
+- Cheklovlar: bitta xabar 4096 belgigacha, media izohi (caption) 1024 belgigacha.
+- Foydalanuvchi noaniq gapirsa (masalan "unga yoz", "o'sha xabarni o'chir", "u odamni chiqar") — kim yoki qaysi xabar/chat nazarda tutilganini aniqlashtir yoki avval get_dialogs/get_messages/search bilan topib ol, keyin amal qil.
+
+## Namunalar (natural so'rov → to'g'ri actions):
+- "Salimga 'salom' deb yoz" → [{{"function": "send_message", "params": {{"chat_id": "@salim", "text": "salom"}}}}]
+- "Kanalimdagi oxirgi 5 ta xabarni o'chir" → avval get_messages bilan id'larni ol, keyin: [{{"function": "get_messages", "params": {{"chat_id": "@mychannel", "limit": 5}}}}, {{"function": "delete_messages", "params": {{"chat_id": "@mychannel", "message_ids": [101, 102, 103, 104, 105]}}}}]
+- "@durov kanaliga qo'shil" → [{{"function": "join_chat", "params": {{"link_or_username": "@durov"}}}}]
+- "Bu rasmni guruhga yubor: https://site.com/img.jpg" → [{{"function": "send_file", "params": {{"chat_id": "@mygroup", "file_path": "https://site.com/img.jpg", "caption": ""}}}}]
+- "Oxirgi xabarimga 🔥 qo'y" → avval get_messages bilan oxirgi message_id ni ol, keyin send_reaction chaqir.
 """
 
 
@@ -421,6 +446,7 @@ async def execute_actions(user_session, actions: list[dict]) -> list[dict]:
         "update_chat_photo": user_session.update_chat_photo,
         "send_sticker": user_session.send_sticker,
         "send_gif": user_session.send_gif,
+        "send_file": user_session.send_file,
         "request_voice_call": user_session.request_voice_call,
         "create_group_call": user_session.create_group_call,
     }
@@ -496,16 +522,21 @@ def format_results(ai_response: dict, action_results: list[dict]) -> str:
 def format_list_result(items: list[dict], action: str) -> str:
     """Format a list of results based on the action type with HTML styling."""
     lines = []
+    # How many items each branch actually renders. Defaults to "all" so that
+    # branches without a cap (e.g. search results) never show a false remainder.
+    display_limit = len(items)
 
     if action in ("get_messages", "get_unread_messages"):
-        for msg in items[:15]:  # Limit display
+        display_limit = 15
+        for msg in items[:display_limit]:
             sender = html.escape(msg.get("sender", "???"))
             text = html.escape(msg.get("text", "")[:80])
             media = "📎" if msg.get("has_media") else ""
             lines.append(f"• <b>[{msg.get('id')}]</b> <b>{sender}</b>: <i>{text}</i> {media}")
 
     elif action == "get_dialogs":
-        for d in items[:20]:
+        display_limit = 20
+        for d in items[:display_limit]:
             type_emoji = {"user": "👤", "group": "👥", "supergroup": "👥", "channel": "📢"}.get(d.get("type"), "💬")
             unread = f" (<b>{d['unread_count']}🔴</b>)" if d.get("unread_count", 0) > 0 else ""
             name = html.escape(d.get("name", ""))
@@ -519,25 +550,29 @@ def format_list_result(items: list[dict], action: str) -> str:
             lines.append(f"• {type_emoji} <b>{name}</b>{username} (<code>ID: {item['id']}</code>)")
 
     elif action == "get_chat_members":
-        for m in items[:20]:
+        display_limit = 20
+        for m in items[:display_limit]:
             bot = " 🤖" if m.get("is_bot") else ""
             username = f" <code>@{html.escape(m['username'])}</code>" if m.get("username") else ""
             name = html.escape(m.get("name", ""))
             lines.append(f"• 👤 <b>{name}</b>{username}{bot}")
 
     elif action == "get_contacts":
-        for c in items[:20]:
+        display_limit = 20
+        for c in items[:display_limit]:
             username = f" <code>@{html.escape(c['username'])}</code>" if c.get("username") else ""
             phone = f" 📞<code>{html.escape(c['phone'])}</code>" if c.get("phone") else ""
             name = html.escape(c.get("name", ""))
             lines.append(f"• 👤 <b>{name}</b>{username}{phone}")
 
     else:
-        for item in items[:10]:
+        display_limit = 10
+        for item in items[:display_limit]:
             lines.append(f"• {html.escape(json.dumps(item, ensure_ascii=False)[:100])}")
 
-    if len(items) > 20:
-        lines.append(f"   ... va yana {len(items) - 20} ta")
+    hidden = len(items) - display_limit
+    if hidden > 0:
+        lines.append(f"   ... va yana {hidden} ta")
 
     return "\n".join(lines)
 
