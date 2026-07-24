@@ -270,9 +270,10 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
                 "text": "Ushbu ovozli xabarda berilgan buyruqni tahlil qiling va tegishli funksiyalarni chaqiring."
             },
             {
-                "type": "audio_url",
-                "audio_url": {
-                    "url": f"data:audio/ogg;base64,{voice_b64}"
+                "type": "input_audio",
+                "input_audio": {
+                    "data": voice_b64,
+                    "format": "wav"
                 }
             }
         ]
@@ -691,9 +692,10 @@ async def synthesize_ai_response(
                     "text": "Olingan natijalar bo'yicha yakuniy javobni tayyorlang."
                 },
                 {
-                    "type": "audio_url",
-                    "audio_url": {
-                        "url": f"data:audio/ogg;base64,{voice_b64}"
+                    "type": "input_audio",
+                    "input_audio": {
+                        "data": voice_b64,
+                        "format": "wav"
                     }
                 }
             ]
