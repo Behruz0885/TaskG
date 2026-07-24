@@ -1,7 +1,36 @@
 const { useState, useEffect } = React;
 
+// ── Auth helpers ───────────────────────────────────────
+const TOKEN_KEY = 'taskgram_admin_token';
+
+function getToken() {
+    return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function saveToken(token) {
+    if (token) {
+        localStorage.setItem(TOKEN_KEY, token);
+    } else {
+        localStorage.removeItem(TOKEN_KEY);
+    }
+}
+
+// fetch wrapper that attaches the admin bearer token and handles session
+// expiry (401) by clearing the token and returning to the login screen.
+async function apiFetch(url, options = {}) {
+    const opts = { ...options };
+    opts.headers = { ...(options.headers || {}), 'Authorization': `Bearer ${getToken()}` };
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+        saveToken('');
+        window.location.reload();
+        throw new Error('Unauthorized');
+    }
+    return res;
+}
+
 // Navigation Sidebar Component
-function Sidebar({ currentTab, setCurrentTab }) {
+function Sidebar({ currentTab, setCurrentTab, onLogout }) {
     return (
         <div className="sidebar">
             <div className="sidebar-brand">
@@ -38,6 +67,71 @@ function Sidebar({ currentTab, setCurrentTab }) {
                     <span>Xabar yuborish</span>
                 </li>
             </ul>
+            <div className="sidebar-footer">
+                <li className="menu-item logout-item" onClick={onLogout}>
+                    <i className="fa-solid fa-right-from-bracket"></i>
+                    <span>Chiqish</span>
+                </li>
+            </div>
+        </div>
+    );
+}
+
+// Login Screen Component
+function LoginView({ onLogin }) {
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!password.trim()) {
+            setError('Parolni kiriting.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.token) {
+                saveToken(data.token);
+                onLogin();
+            } else {
+                setError(data.error || "Kirishda xatolik yuz berdi.");
+            }
+        } catch (e) {
+            setError('Aloqa xatoligi.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="login-container">
+            <form className="login-card" onSubmit={handleSubmit}>
+                <div className="login-brand">
+                    <i className="fa-solid fa-robot"></i>
+                    <span>TaskGram AI Admin</span>
+                </div>
+                <p className="login-subtitle">Boshqaruv paneliga kirish</p>
+                <input
+                    type="password"
+                    className="login-input"
+                    placeholder="Admin parol"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoFocus
+                />
+                {error && <div className="login-error">{error}</div>}
+                <button type="submit" className="login-button" disabled={loading}>
+                    {loading ? 'Tekshirilmoqda...' : 'Kirish'}
+                </button>
+            </form>
         </div>
     );
 }
@@ -301,7 +395,7 @@ function BroadcastView() {
         setSending(true);
         setStatus({ type: 'info', text: 'Xabar yuborilmoqda...' });
         try {
-            const res = await fetch('/api/broadcast', {
+            const res = await apiFetch('/api/broadcast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: message })
@@ -523,8 +617,8 @@ function ChatModal({ user, messages, loading, onClose }) {
 }
 
 
-// Main App Component
-function App() {
+// Admin Panel (rendered once authenticated)
+function AdminPanel({ onLogout }) {
     const [currentTab, setCurrentTab] = useState('dashboard');
     const [stats, setStats] = useState({ active_users: 0, total_commands: 0 });
     const [users, setUsers] = useState([]);
@@ -540,7 +634,7 @@ function App() {
         setChatMessages([]);
         setLoadingChat(true);
         try {
-            const res = await fetch(`/api/chat_history?user_id=${userId}`);
+            const res = await apiFetch(`/api/chat_history?user_id=${userId}`);
             const data = await res.json();
             if (Array.isArray(data)) {
                 setChatMessages(data);
@@ -556,7 +650,7 @@ function App() {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch('/api/stats');
+            const res = await apiFetch('/api/stats');
             const data = await res.json();
             if (!data.error) setStats(data);
         } catch (e) {
@@ -566,7 +660,7 @@ function App() {
 
     const fetchUsers = async () => {
         try {
-            const res = await fetch('/api/users');
+            const res = await apiFetch('/api/users');
             const data = await res.json();
             if (!data.error) setUsers(data);
         } catch (e) {
@@ -576,7 +670,7 @@ function App() {
 
     const fetchLogs = async () => {
         try {
-            const res = await fetch('/api/logs');
+            const res = await apiFetch('/api/logs');
             const data = await res.json();
             if (!data.error) setLogs(data);
         } catch (e) {
@@ -612,7 +706,7 @@ function App() {
         }
         try {
             setLoading(true);
-            const res = await fetch('/api/users/block', {
+            const res = await apiFetch('/api/users/block', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, is_blocked: isBlocked })
@@ -637,7 +731,7 @@ function App() {
         }
         try {
             setLoading(true);
-            const res = await fetch('/api/users/delete', {
+            const res = await apiFetch('/api/users/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId })
@@ -658,7 +752,7 @@ function App() {
 
     return (
         <React.Fragment>
-            <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />
+            <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} onLogout={onLogout} />
             <div className="main-content">
                 {currentTab === 'dashboard' && (
                     <DashboardView stats={stats} loading={loading} refreshData={refreshAll} setCurrentTab={setCurrentTab} lastUpdated={lastUpdated} />
@@ -689,6 +783,24 @@ function App() {
                 />
             )}
         </React.Fragment>
+    );
+}
+
+// Root component: gates the admin panel behind the login screen.
+function App() {
+    const [authed, setAuthed] = useState(!!getToken());
+
+    if (!authed) {
+        return <LoginView onLogin={() => setAuthed(true)} />;
+    }
+
+    return (
+        <AdminPanel
+            onLogout={() => {
+                saveToken('');
+                setAuthed(false);
+            }}
+        />
     );
 }
 

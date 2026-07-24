@@ -1,7 +1,10 @@
 import aiosqlite
 import json
 import asyncio
+import logging
 from config import config
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -36,7 +39,7 @@ class Database:
                 username TEXT,
                 name TEXT,
                 is_blocked INTEGER DEFAULT 0,
-                auto_reply INTEGER DEFAULT 1,
+                auto_reply INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -74,7 +77,7 @@ class Database:
 
         # Add auto_reply column to existing table if missing
         try:
-            await self._db.execute("ALTER TABLE channel_sessions ADD COLUMN auto_reply INTEGER DEFAULT 1")
+            await self._db.execute("ALTER TABLE channel_sessions ADD COLUMN auto_reply INTEGER DEFAULT 0")
             await self._db.commit()
         except Exception:
             pass
@@ -174,7 +177,7 @@ class Database:
         await self.trigger_backup()
 
     async def get_auto_reply(self, user_id: int) -> bool:
-        """Check if AI auto-reply for PMs is enabled for user."""
+        """Check if AI auto-reply for PMs is enabled for user. Disabled by default for privacy."""
         try:
             async with self._db.execute(
                 "SELECT auto_reply FROM channel_sessions WHERE user_id = ?",
@@ -185,17 +188,22 @@ class Database:
                     return bool(row[0])
         except Exception:
             pass
-        return True
+        return False
 
     async def set_auto_reply(self, user_id: int, enabled: bool):
-        """Set AI auto-reply for PMs state for user."""
+        """Set AI auto-reply for PMs state for user (upsert so it works even before a session row exists)."""
         val = 1 if enabled else 0
         try:
             await self._db.execute(
-                "UPDATE channel_sessions SET auto_reply = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-                (val, user_id)
+                """INSERT INTO channel_sessions (user_id, channel_message_id, phone, auto_reply, updated_at)
+                   VALUES (?, 0, '', ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       auto_reply = excluded.auto_reply,
+                       updated_at = CURRENT_TIMESTAMP""",
+                (user_id, val)
             )
             await self._db.commit()
+            await self.trigger_backup()
         except Exception as e:
             logger.error(f"Error setting auto_reply for user {user_id}: {e}")
 
