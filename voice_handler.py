@@ -13,21 +13,13 @@ async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> s
     Transcribe Telegram voice/audio file bytes to text using available STT services.
     Supports Voxtral, Groq Whisper, OpenAI Whisper, or Wit.ai API.
     """
-    # 1. Try AWS Bedrock Voxtral Multimodal transcription (Highest quality voice-in text-out)
-    try:
-        text = await _transcribe_voxtral(voice_bytes)
-        if text:
-            logger.info(f"Voxtral STT successfully transcribed: '{text[:50]}...'")
-            return text
-    except Exception as e:
-        logger.warning(f"Voxtral STT failed, falling back to other services: {e}")
-
-    # 2. Try Groq Whisper API (Fastest & Free)
+    # 1. Try Groq Whisper API (Fastest & Free)
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
         try:
             text = await _transcribe_groq(voice_bytes, filename, groq_key)
             if text:
+                logger.info(f"Groq STT successfully transcribed: '{text[:50]}...'")
                 return text
         except Exception as e:
             logger.warning(f"Groq STT failed: {e}")
@@ -59,6 +51,15 @@ async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> s
             return text
     except Exception as e:
         logger.warning(f"Google Free STT failed: {e}")
+
+    # 5. Try AWS Bedrock Voxtral Multimodal transcription (Last fallback, as it can get chatty)
+    try:
+        text = await _transcribe_voxtral(voice_bytes)
+        if text and "unable to process" not in text.lower() and "please play the audio" not in text.lower():
+            logger.info(f"Voxtral STT successfully transcribed: '{text[:50]}...'")
+            return text
+    except Exception as e:
+        logger.warning(f"Voxtral STT failed: {e}")
 
     logger.error("All STT transcription methods failed")
     return None
