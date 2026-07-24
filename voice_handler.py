@@ -161,6 +161,61 @@ async def _transcribe_google_free(file_bytes: bytes) -> str | None:
     return None
 
 
+async def _convert_ogg_to_wav(ogg_bytes: bytes) -> bytes | None:
+    """Convert OGG/Opus bytes to standard WAV bytes using ffmpeg for Bedrock multimodal model compatibility."""
+    import tempfile
+    import shutil
+    import asyncio
+    
+    # Resolve ffmpeg binary
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        try:
+            import imageio_ffmpeg
+            ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
+            
+    if not ffmpeg:
+        logger.error("ffmpeg binary not found, cannot convert audio to WAV")
+        return None
+        
+    ogg_path = None
+    wav_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+            ogg_path = f.name
+            f.write(ogg_bytes)
+            
+        wav_path = ogg_path[:-4] + ".wav"
+        
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg, "-y", "-loglevel", "error",
+            "-i", ogg_path,
+            "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+            wav_path,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0 or not os.path.exists(wav_path) or not os.path.getsize(wav_path):
+            logger.error(f"ffmpeg conversion to WAV failed (code {proc.returncode}): {stderr.decode('utf-8', 'ignore')[:200]}")
+            return None
+            
+        with open(wav_path, "rb") as f:
+            return f.read()
+    except Exception as e:
+        logger.error(f"Error converting OGG to WAV: {e}")
+        return None
+    finally:
+        for p in (ogg_path, wav_path):
+            if p and os.path.exists(p):
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
+
+
 async def _transcribe_voxtral(voice_bytes: bytes) -> str | None:
     """Transcribe using AWS Bedrock Voxtral multimodal model."""
     token = config.AWS_BEARER_TOKEN
@@ -169,8 +224,14 @@ async def _transcribe_voxtral(voice_bytes: bytes) -> str | None:
         return None
         
     try:
+        # Convert OGG to WAV first so the model can decode the audio successfully
+        wav_bytes = await _convert_ogg_to_wav(voice_bytes)
+        if not wav_bytes:
+            logger.warning("Failed to convert voice OGG to WAV for Voxtral")
+            return None
+
         import base64
-        voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
+        voice_b64 = base64.b64encode(wav_bytes).decode("utf-8")
         
         payload = {
             "model": "mistral.voxtral-small-24b-2507",
