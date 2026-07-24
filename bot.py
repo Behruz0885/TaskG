@@ -1527,6 +1527,7 @@ async def _process_ai_text(
     session,
     status_msg: Message,
     original_message: Message,
+    is_voice: bool = False,
 ):
     """Core logic: forwards text to AI and executes returned actions via Telethon."""
     try:
@@ -1539,11 +1540,14 @@ async def _process_ai_text(
         # Get user language
         language = await db.get_user_language(user_id)
 
+        # Determine AI model to use
+        ai_model = "mistral.voxtral-small-24b-2507" if is_voice else None
+
         # Start live animated progress
         action_results = []
         async with StatusAnimator(status_msg, lang=language):
             # Ask AI
-            ai_response = await ask_ai(user_text, chat_history, language=language)
+            ai_response = await ask_ai(user_text, chat_history, language=language, model=ai_model)
 
             # Execute actions if any
             if ai_response.get("actions"):
@@ -1555,6 +1559,7 @@ async def _process_ai_text(
                     action_results=action_results,
                     chat_history=chat_history,
                     language=language,
+                    model=ai_model,
                 )
                 if synthesized:
                     response_text = synthesized
@@ -1706,7 +1711,7 @@ async def handle_voice_message(message: Message, state: FSMContext):
             parse_mode=ParseMode.HTML,
         )
 
-        await _process_ai_text(user_id, polished_text_val, session, status_msg, message)
+        await _process_ai_text(user_id, polished_text_val, session, status_msg, message, is_voice=True)
 
     except Exception as e:
         logger.error(f"Voice message error for user {user_id}: {e}", exc_info=True)

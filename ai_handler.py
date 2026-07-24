@@ -217,7 +217,7 @@ def _build_api_url() -> str:
     return f"{base_url}/chat/completions"
 
 
-async def ask_ai(user_message: str, chat_history: list[dict], language: str = "uz") -> dict:
+async def ask_ai(user_message: str, chat_history: list[dict], language: str = "uz", model: str = None) -> dict:
     """
     Send a message to the GLM-5 AI via AWS Bedrock Mantle / OpenAI-compatible endpoint.
 
@@ -237,6 +237,8 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
     messages.extend(chat_history[-20:])  # Last 20 messages for context
     messages.append({"role": "user", "content": user_message})
 
+    selected_model = model or config.AI_MODEL
+
     try:
         async with aiohttp.ClientSession() as session:
             headers = {
@@ -244,7 +246,7 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
                 "Content-Type": "application/json",
             }
             payload = {
-                "model": config.AI_MODEL,
+                "model": selected_model,
                 "messages": messages,
                 "max_tokens": config.AI_MAX_TOKENS,
                 "temperature": 0.3,
@@ -252,7 +254,7 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
             }
 
             api_url = _build_api_url()
-            logger.info(f"Calling GLM-5 API: {api_url} | Model: {config.AI_MODEL}")
+            logger.info(f"Calling AI API: {api_url} | Model: {selected_model}")
 
             async with session.post(
                 api_url,
@@ -595,6 +597,7 @@ async def synthesize_ai_response(
     action_results: list[dict],
     chat_history: list[dict],
     language: str = "uz",
+    model: str = None,
 ) -> str | None:
     """
     Takes the action execution results (data fetched from Telegram, e.g. messages from @BotFather)
@@ -622,6 +625,8 @@ async def synthesize_ai_response(
         f"5. Faqat va faqat tayyor HTML javob matnini qaytar, JSON format emas!"
     )
 
+    selected_model = model or config.AI_MODEL
+
     try:
         messages = [
             {"role": "system", "content": system_prompt},
@@ -634,7 +639,7 @@ async def synthesize_ai_response(
                 "Content-Type": "application/json",
             }
             payload = {
-                "model": config.AI_MODEL,
+                "model": selected_model,
                 "messages": messages,
                 "max_tokens": 1500,
                 "temperature": 0.3,
