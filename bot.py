@@ -1552,20 +1552,14 @@ async def _process_ai_text(
     session,
     status_msg: Message,
     original_message: Message,
-    is_voice: bool = False,
-    voice_bytes: bytes = None,
 ):
     """Core logic: forwards text to AI and executes returned actions via Telethon."""
     try:
         # Get chat history from DB
         chat_history = await db.get_chat_history(user_id)
 
-        # Determine AI model to use
-        ai_model = "mistral.voxtral-small-24b-2507" if (is_voice or voice_bytes) else None
-
         # Save user message
-        chat_label = user_text if not voice_bytes else "[🗣 Ovozli buyruq]"
-        await db.add_chat_message(user_id, "user", chat_label)
+        await db.add_chat_message(user_id, "user", user_text)
 
         # Get user language
         language = await db.get_user_language(user_id)
@@ -1574,20 +1568,18 @@ async def _process_ai_text(
         action_results = []
         async with StatusAnimator(status_msg, lang=language):
             # Ask AI
-            ai_response = await ask_ai(user_text, chat_history, language=language, model=ai_model, voice_bytes=voice_bytes)
+            ai_response = await ask_ai(user_text, chat_history, language=language)
 
             # Execute actions if any
             if ai_response.get("actions"):
                 action_results = await execute_actions(session, ai_response["actions"])
                 
                 synthesized = await synthesize_ai_response(
-                    user_text=chat_label,
+                    user_text=user_text,
                     ai_message=ai_response.get("message", ""),
                     action_results=action_results,
                     chat_history=chat_history,
                     language=language,
-                    model=ai_model,
-                    voice_bytes=voice_bytes,
                 )
                 if synthesized:
                     response_text = synthesized
@@ -1710,18 +1702,39 @@ async def handle_voice_message(message: Message, state: FSMContext):
         voice_bytes = file_io.read()
 
         await status_msg.edit_text(
-            "🤔 <b>Sun'iy intellekt ovozli xabarni eshitmoqda va tahlil qilmoqda...</b>",
+            "🗣 <b>Ovozni matnga o'girish jarayoni ketmoqda...</b>",
             parse_mode=ParseMode.HTML,
         )
 
-        await _process_ai_text(
-            user_id=user_id,
-            user_text="",
-            session=session,
-            status_msg=status_msg,
-            original_message=message,
-            voice_bytes=voice_bytes,
+        transcribed_text = await transcribe_voice(voice_bytes)
+
+        if not transcribed_text:
+            await status_msg.edit_text(
+                "❌ <b>Ovozni matnga o'gira olmadik. Iltimos, qaytadan yozib ko'ring yoki boshqa STT sozlamalarini tekshiring.</b>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        await status_msg.edit_text(
+            f"🗣 <b>Ovoz matnga o'girildi:</b>\n"
+            f"💬 <i>\"{transcribed_text}\"</i>\n\n"
+            f"✨ <i>Tizim tomonidan tahlil qilish va grammatik silliqlash jarayoni ketmoqda...</i>",
+            parse_mode=ParseMode.HTML,
         )
+
+        # Get user language
+        language = await db.get_user_language(user_id)
+
+        polished_text_val = await polish_text(transcribed_text, language=language)
+
+        await status_msg.edit_text(
+            f"🗣 <b>Asl transkripsiya:</b> <i>\"{transcribed_text}\"</i>\n"
+            f"✨ <b>Tahrirlangan buyruq:</b> <b>\"{polished_text_val}\"</b>\n\n"
+            f"🤔 Sun'iy intellekt (GLM-5) so'rovni bajarmoqda...",
+            parse_mode=ParseMode.HTML,
+        )
+
+        await _process_ai_text(user_id, polished_text_val, session, status_msg, message)
 
     except Exception as e:
         logger.error(f"Voice message error for user {user_id}: {e}", exc_info=True)

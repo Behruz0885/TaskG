@@ -11,9 +11,18 @@ logger = logging.getLogger(__name__)
 async def transcribe_voice(voice_bytes: bytes, filename: str = "voice.ogg") -> str | None:
     """
     Transcribe Telegram voice/audio file bytes to text using available STT services.
-    Supports Groq Whisper, OpenAI Whisper, or Wit.ai API.
+    Supports Voxtral, Groq Whisper, OpenAI Whisper, or Wit.ai API.
     """
-    # 1. Try Groq Whisper API (Fastest & Free)
+    # 1. Try AWS Bedrock Voxtral Multimodal transcription (Highest quality voice-in text-out)
+    try:
+        text = await _transcribe_voxtral(voice_bytes)
+        if text:
+            logger.info(f"Voxtral STT successfully transcribed: '{text[:50]}...'")
+            return text
+    except Exception as e:
+        logger.warning(f"Voxtral STT failed, falling back to other services: {e}")
+
+    # 2. Try Groq Whisper API (Fastest & Free)
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
         try:
@@ -149,4 +158,68 @@ async def _transcribe_google_free(file_bytes: bytes) -> str | None:
                             pass
     except Exception as e:
         logger.warning(f"Google free STT request failed: {e}")
+    return None
+
+
+async def _transcribe_voxtral(voice_bytes: bytes) -> str | None:
+    """Transcribe using AWS Bedrock Voxtral multimodal model."""
+    token = config.AWS_BEARER_TOKEN
+    if not token:
+        logger.warning("AWS_BEARER_TOKEN not set, cannot use Voxtral STT")
+        return None
+        
+    try:
+        import base64
+        voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
+        
+        payload = {
+            "model": "mistral.voxtral-small-24b-2507",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Listen to this audio and write down exactly what was said in text format. Output ONLY the transcribed text, word-for-word, without any additional explanations, introduction, or formatting. If there is no audio or you cannot understand, output an empty string."
+                        },
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": voice_b64,
+                                "format": "wav"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 1000,
+            "temperature": 0.0,
+        }
+        
+        base_url = getattr(config, "AI_BASE_URL", "").strip() or os.getenv("AI_BASE_URL", "")
+        if not base_url or "amazonaws.com" in base_url:
+            region = config.AWS_REGION
+            base_url = f"https://bedrock-mantle.{region}.api.aws/v1"
+        base_url = base_url.rstrip("/")
+        url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=40)
+            ) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    if "choices" in res and len(res["choices"]) > 0:
+                        content = res["choices"][0]["message"].get("content", "").strip()
+                        return content
+                else:
+                    err = await resp.text()
+                    logger.error(f"Voxtral STT error {resp.status}: {err[:200]}")
+    except Exception as e:
+        logger.warning(f"Voxtral STT request failed: {e}")
     return None

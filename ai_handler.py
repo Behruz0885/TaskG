@@ -242,7 +242,7 @@ def _build_api_url() -> str:
     return f"{base_url}/chat/completions"
 
 
-async def ask_ai(user_message: str, chat_history: list[dict], language: str = "uz", model: str = None, voice_bytes: bytes = None) -> dict:
+async def ask_ai(user_message: str, chat_history: list[dict], language: str = "uz") -> dict:
     """
     Send a message to the GLM-5 AI via AWS Bedrock Mantle / OpenAI-compatible endpoint.
 
@@ -258,36 +258,11 @@ async def ask_ai(user_message: str, chat_history: list[dict], language: str = "u
             "message": "⚠️ AWS Bedrock API kaliti sozlanmagan. .env faylida AWS_BEARER_TOKEN_BEDROCK ni to'ldiring.",
         }
 
-    if voice_bytes:
-        # Some API gateways/providers don't allow a system prompt at index 0 when audio chunks are present.
-        # We merge the system prompt instructions directly into the user message.
-        messages = []
-        messages.extend(chat_history[-20:])  # Last 20 messages for context
+    messages = [{"role": "system", "content": get_system_prompt(language)}]
+    messages.extend(chat_history[-20:])  # Last 20 messages for context
+    messages.append({"role": "user", "content": user_message})
 
-        import base64
-        voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
-        system_instructions = get_system_prompt(language)
-        
-        user_content = [
-            {
-                "type": "text",
-                "text": f"{system_instructions}\n\nUshbu ovozli xabarda berilgan buyruqni tahlil qiling va tegishli funksiyalarni chaqiring."
-            },
-            {
-                "type": "input_audio",
-                "input_audio": {
-                    "data": voice_b64,
-                    "format": "wav"
-                }
-            }
-        ]
-        messages.append({"role": "user", "content": user_content})
-    else:
-        messages = [{"role": "system", "content": get_system_prompt(language)}]
-        messages.extend(chat_history[-20:])  # Last 20 messages for context
-        messages.append({"role": "user", "content": user_message})
-
-    selected_model = model or config.AI_MODEL
+    selected_model = config.AI_MODEL
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -657,8 +632,6 @@ async def synthesize_ai_response(
     action_results: list[dict],
     chat_history: list[dict],
     language: str = "uz",
-    model: str = None,
-    voice_bytes: bytes = None,
 ) -> str | None:
     """
     Takes the action execution results (data fetched from Telegram, e.g. messages from @BotFather)
@@ -686,33 +659,13 @@ async def synthesize_ai_response(
         f"5. Faqat va faqat tayyor HTML javob matnini qaytar, JSON format emas!"
     )
 
-    selected_model = model or config.AI_MODEL
+    selected_model = config.AI_MODEL
 
     try:
-        if voice_bytes:
-            import base64
-            voice_b64 = base64.b64encode(voice_bytes).decode("utf-8")
-            user_content = [
-                {
-                    "type": "text",
-                    "text": f"{system_prompt}\n\nOlingan natijalar bo'yicha yakuniy javobni tayyorlang."
-                },
-                {
-                    "type": "input_audio",
-                    "input_audio": {
-                        "data": voice_b64,
-                        "format": "wav"
-                    }
-                }
-            ]
-            messages = [
-                {"role": "user", "content": user_content}
-            ]
-        else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Foydalanuvchi so'rovi: {user_text}\nOlingan natijalar bo'yicha yakuniy javobni tayyorla."}
-            ]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Foydalanuvchi so'rovi: {user_text}\nOlingan natijalar bo'yicha yakuniy javobni tayyorla."}
+        ]
 
         async with aiohttp.ClientSession() as session:
             headers = {
