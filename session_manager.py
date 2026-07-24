@@ -108,6 +108,9 @@ class UserSession:
                     logger.info(f"Auto-reply successfully sent to {sender_id}: '{reply_text[:40]}'")
             except Exception as e:
                 logger.error(f"Auto-reply listener error for user {self.user_id}: {e}", exc_info=True)
+                if "authkeyunregistered" in str(e).lower() or isinstance(e, AuthKeyUnregisteredError):
+                    from session_manager import session_manager
+                    asyncio.create_task(session_manager.delete_invalid_session(self.user_id))
 
     async def disconnect(self):
         """Disconnect the client."""
@@ -122,6 +125,10 @@ class UserSession:
                 return
             # Ping to verify connection is alive
             await self.client.get_me()
+        except AuthKeyUnregisteredError:
+            logger.warning(f"AuthKeyUnregisteredError in ensure_connected for user {self.user_id}")
+            from session_manager import session_manager
+            asyncio.create_task(session_manager.delete_invalid_session(self.user_id))
         except Exception:
             try:
                 await self.client.disconnect()
@@ -839,7 +846,10 @@ class SessionManager:
             try:
                 if await session.is_authorized():
                     return session
-            except (AuthKeyUnregisteredError, ConnectionError):
+            except AuthKeyUnregisteredError:
+                await self.delete_invalid_session(user_id)
+                return None
+            except ConnectionError:
                 del self._sessions[user_id]
                 await db.disconnect_user(user_id)
                 return None
@@ -863,8 +873,11 @@ class SessionManager:
                         return session
                     else:
                         logger.warning(f"session.is_authorized() returned False for user {user_id}")
-                except (AuthKeyUnregisteredError, ConnectionError) as exp_err:
-                    logger.warning(f"Session from channel expired for user {user_id}: {exp_err}")
+                except AuthKeyUnregisteredError as exp_err:
+                    logger.warning(f"Session from channel revoked for user {user_id}: {exp_err}")
+                    await self.delete_invalid_session(user_id)
+                except ConnectionError as exp_err:
+                    logger.warning(f"Session from channel connection issue for user {user_id}: {exp_err}")
                     await db.disconnect_user(user_id)
                 except Exception as auth_err:
                     logger.error(f"Error checking is_authorized for user {user_id}: {auth_err}", exc_info=True)
@@ -926,6 +939,45 @@ class SessionManager:
                 await storage.delete_session(user_id)
             except Exception as e:
                 logger.error(f"Failed to delete session from channel: {e}")
+
+    async def delete_invalid_session(self, user_id: int):
+        """Permanently delete an expired or revoked user session from database, memory, and channel storage."""
+        try:
+            logger.warning(f"Permanently deleting revoked/expired session for user {user_id}...")
+            
+            # Remove from memory cache
+            session = self._sessions.pop(user_id, None)
+            if session:
+                try:
+                    await session.disconnect()
+                except Exception:
+                    pass
+            self._pending_auth.pop(user_id, None)
+            
+            # Delete session mapping from channel storage
+            storage = get_channel_storage()
+            if storage:
+                try:
+                    await storage.delete_session(user_id)
+                except Exception as e:
+                    logger.warning(f"Could not delete session file from channel for user {user_id}: {e}")
+            else:
+                await db.delete_session_mapping(user_id)
+                await db.disconnect_user(user_id)
+                
+            # Clean up all SQLite databases tables for this user
+            await db._db.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
+            await db._db.execute("DELETE FROM command_log WHERE user_id = ?", (user_id,))
+            await db._db.execute("DELETE FROM channel_sessions WHERE user_id = ?", (user_id,))
+            await db._db.execute("DELETE FROM channel_chat_histories WHERE user_id = ?", (user_id,))
+            await db._db.commit()
+            
+            # Update JSON database backup in the channel
+            await db.trigger_backup()
+            
+            logger.info(f"✅ Revoked/expired session for user {user_id} deleted successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting invalid session for user {user_id}: {e}", exc_info=True)
 
     async def load_all_active_sessions(self):
         """Load and reconnect all active user sessions from database on startup."""
